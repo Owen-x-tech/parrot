@@ -9,12 +9,15 @@ import {
   serverTimestamp,
   writeBatch,
   doc,
+  orderBy,
 } from "firebase/firestore";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), ".env") });
+
+export const USERNAME = process.env.PARROT_USERNAME;
 
 const app = initializeApp({
   apiKey: process.env.FIREBASE_API_KEY,
@@ -26,12 +29,11 @@ const app = initializeApp({
 });
 
 const db = getFirestore(app);
-const FROM = process.env.PARROT_USERNAME;
 
 export async function sendMessage(to, content) {
-  if (!FROM) throw new Error("PARROT_USERNAME not set in .env");
+  if (!USERNAME) throw new Error("PARROT_USERNAME not set. Run /parrot-setup.");
   await addDoc(collection(db, "messages"), {
-    from: FROM,
+    from: USERNAME,
     to,
     content,
     read: false,
@@ -39,10 +41,11 @@ export async function sendMessage(to, content) {
   });
 }
 
-export async function checkMessages(username) {
+export async function checkMessages() {
+  if (!USERNAME) throw new Error("PARROT_USERNAME not set. Run /parrot-setup.");
   const q = query(
     collection(db, "messages"),
-    where("to", "==", username),
+    where("to", "==", USERNAME),
     where("read", "==", false)
   );
   const snapshot = await getDocs(q);
@@ -51,11 +54,17 @@ export async function checkMessages(username) {
   const batch = writeBatch(db);
 
   snapshot.forEach((docSnap) => {
-    messages.push(docSnap.data());
+    const data = docSnap.data();
+    messages.push({
+      from: data.from,
+      content: data.content,
+      created_at: data.created_at?.toDate?.() ?? null,
+    });
     batch.update(doc(db, "messages", docSnap.id), { read: true });
   });
 
   if (messages.length > 0) await batch.commit();
 
+  messages.sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
   return messages;
 }
