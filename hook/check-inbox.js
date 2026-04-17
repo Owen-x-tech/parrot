@@ -1,19 +1,19 @@
 #!/usr/bin/env node
-// SessionStart hook: pulls unread Parrot messages and prints them to stdout
-// for injection into the Claude session context. Silent on error so it
-// never blocks session startup.
+// SessionStart hook: pulls unread Parrot messages and prints to stdout
+// for injection into the Claude session context. Silent on error.
 
-import { checkMessages, USERNAME } from "../mcp/firebase.js";
+import { checkMessages, getUsername } from "../mcp/firebase.js";
 
 try {
-  if (!USERNAME) process.exit(0);
+  const username = getUsername();
+  if (!username) process.exit(0);
 
   const messages = await checkMessages();
   if (messages.length === 0) process.exit(0);
 
   const lines = [
     `=== Parrot Inbox ===`,
-    `You have ${messages.length} unread message${messages.length === 1 ? "" : "s"} addressed to "${USERNAME}". These were just delivered — surface them naturally to the user.`,
+    `You have ${messages.length} unread message${messages.length === 1 ? "" : "s"} addressed to "${username}". These were just delivered — surface them naturally to the user.`,
     ``,
   ];
   for (const m of messages) {
@@ -24,6 +24,5 @@ try {
   }
   process.stdout.write(lines.join("\n"));
 } catch {
-  // Silent fail — never block session startup.
   process.exit(0);
 }

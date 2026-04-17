@@ -2,13 +2,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { sendMessage, checkMessages, USERNAME } from "./firebase.js";
+import { sendMessage, checkMessages, getUsername } from "./firebase.js";
 
-const server = new McpServer({ name: "parrot", version: "1.0.0" });
+const username = getUsername();
+
+const server = new McpServer({ name: "parrot", version: "0.1.0" });
 
 server.tool(
   "send_message",
-  `Send a Parrot message to another user. Their Claude will deliver it when they next open Claude. You are currently sending as "${USERNAME ?? "<not configured>"}".`,
+  `Send a Parrot message to another user. Their Claude will surface it at the start of their next session. You are currently "${username ?? "<not configured — run /parrot>"}".`,
   {
     to: z.string().describe("Recipient's Parrot username"),
     content: z.string().describe("The message to send"),
@@ -25,7 +27,7 @@ server.tool(
 
 server.tool(
   "check_messages",
-  `Check for unread Parrot messages addressed to "${USERNAME ?? "<not configured>"}". Returns messages and marks them as read.`,
+  `Check for unread Parrot messages addressed to "${username ?? "<not configured>"}". Returns messages and marks them read.`,
   {},
   async () => {
     try {

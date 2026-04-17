@@ -9,31 +9,42 @@ import {
   serverTimestamp,
   writeBatch,
   doc,
-  orderBy,
 } from "firebase/firestore";
-import dotenv from "dotenv";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { readFileSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 
-dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), ".env") });
+// Firebase Web SDK config for the shared Parrot network. These are client-side
+// config values (not secrets); security is enforced by Firestore rules.
+const firebaseConfig = {
+  apiKey: "AIzaSyDfwsLRb8gPaWdxCXikZjJrM34N5426qrE",
+  authDomain: "parrot-ai-9b46e.firebaseapp.com",
+  projectId: "parrot-ai-9b46e",
+  storageBucket: "parrot-ai-9b46e.firebasestorage.app",
+  messagingSenderId: "311043780015",
+  appId: "1:311043780015:web:d57792e91584bdf23d135a",
+};
 
-export const USERNAME = process.env.PARROT_USERNAME;
+const CONFIG_PATH = join(homedir(), ".config", "parrot", "config.json");
 
-const app = initializeApp({
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID,
-});
+export function getUsername() {
+  try {
+    const raw = readFileSync(CONFIG_PATH, "utf8");
+    const cfg = JSON.parse(raw);
+    return cfg.username || null;
+  } catch {
+    return null;
+  }
+}
 
+const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 export async function sendMessage(to, content) {
-  if (!USERNAME) throw new Error("PARROT_USERNAME not set. Run /parrot-setup.");
+  const from = getUsername();
+  if (!from) throw new Error("Parrot username not set. Run /parrot to set up.");
   await addDoc(collection(db, "messages"), {
-    from: USERNAME,
+    from,
     to,
     content,
     read: false,
@@ -42,10 +53,11 @@ export async function sendMessage(to, content) {
 }
 
 export async function checkMessages() {
-  if (!USERNAME) throw new Error("PARROT_USERNAME not set. Run /parrot-setup.");
+  const username = getUsername();
+  if (!username) throw new Error("Parrot username not set. Run /parrot to set up.");
   const q = query(
     collection(db, "messages"),
-    where("to", "==", USERNAME),
+    where("to", "==", username),
     where("read", "==", false)
   );
   const snapshot = await getDocs(q);
