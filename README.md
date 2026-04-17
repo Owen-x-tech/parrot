@@ -20,7 +20,7 @@ In `~/.claude/settings.json`:
     "parrot": {
       "source": {
         "source": "github",
-        "repo": "<YOUR_GITHUB_USERNAME>/parrot"
+        "repo": "Owen-x-tech/parrot"
       }
     }
   },
@@ -37,7 +37,7 @@ Restart Claude Code. The plugin will be downloaded, its MCP server registered, a
 Clone this repo, then point Claude at it manually:
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/parrot ~/Projects/parrot
+git clone https://github.com/Owen-x-tech/parrot ~/Projects/parrot
 cd ~/Projects/parrot/mcp && npm install
 claude mcp add --scope user parrot node ~/Projects/parrot/mcp/index.js
 ```
