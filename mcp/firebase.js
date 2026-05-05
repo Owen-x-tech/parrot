@@ -1,82 +1,91 @@
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  query,
-  where,
-  getDocs,
-  serverTimestamp,
-  writeBatch,
-  doc,
-} from "firebase/firestore";
-import { readFileSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import { readConfig, writeConfig, getUsername } from "./config.js";
+import { signInWithCustomToken, refreshIdToken } from "./auth-rest.js";
+import { createDocument, runQuery, patchDocument } from "./firestore-rest.js";
 
-// Firebase Web SDK config for the shared Parrot network. These are client-side
-// config values (not secrets); security is enforced by Firestore rules.
-const firebaseConfig = {
-  apiKey: "AIzaSyDfwsLRb8gPaWdxCXikZjJrM34N5426qrE",
-  authDomain: "parrot-ai-9b46e.firebaseapp.com",
-  projectId: "parrot-ai-9b46e",
-  storageBucket: "parrot-ai-9b46e.firebasestorage.app",
-  messagingSenderId: "311043780015",
-  appId: "1:311043780015:web:d57792e91584bdf23d135a",
-};
+let cachedIdToken = null;
+let cachedExpiresAt = 0;
 
-const CONFIG_PATH = join(homedir(), ".config", "parrot", "config.json");
+// Ensures a fresh ID token is available. Refreshes if expired or expiring soon.
+async function getIdToken() {
+  const now = Date.now();
+  if (cachedIdToken && cachedExpiresAt - now > 60_000) return cachedIdToken;
 
-export function getUsername() {
-  try {
-    const raw = readFileSync(CONFIG_PATH, "utf8");
-    const cfg = JSON.parse(raw);
-    return cfg.username || null;
-  } catch {
-    return null;
+  const cfg = readConfig();
+  if (!cfg?.refresh_token) {
+    throw new Error("Parrot not paired. Run /parrot to set up.");
   }
+  const { idToken, refreshToken, expiresInSec } = await refreshIdToken(cfg.refresh_token);
+  cachedIdToken = idToken;
+  cachedExpiresAt = now + expiresInSec * 1000;
+  // Refresh tokens are usually stable but Firebase may rotate them; persist if changed.
+  if (refreshToken && refreshToken !== cfg.refresh_token) {
+    writeConfig({ ...cfg, refresh_token: refreshToken });
+  }
+  return idToken;
 }
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Pairs the plugin using a base64 pairing string from parrot-web.
+// Stores { username, uid, refresh_token } in ~/.config/parrot/config.json.
+export async function pair(pairingString) {
+  let payload;
+  try {
+    const json = Buffer.from(pairingString.trim(), "base64").toString("utf8");
+    payload = JSON.parse(json);
+  } catch {
+    throw new Error("Pairing string is malformed. Get a fresh one from parrot-web.");
+  }
+  if (!payload.custom_token || !payload.username || !payload.uid) {
+    throw new Error("Pairing string is missing required fields.");
+  }
+
+  const { idToken, refreshToken, uid } = await signInWithCustomToken(payload.custom_token);
+  if (uid !== payload.uid) {
+    throw new Error("Pairing string UID mismatch.");
+  }
+
+  writeConfig({ username: payload.username, uid, refresh_token: refreshToken });
+  cachedIdToken = idToken;
+  // Set 50min cache for the just-issued ID token (Firebase ID tokens are 1hr).
+  cachedExpiresAt = Date.now() + 50 * 60 * 1000;
+
+  return payload.username;
+}
 
 export async function sendMessage(to, content) {
   const from = getUsername();
   if (!from) throw new Error("Parrot username not set. Run /parrot to set up.");
-  await addDoc(collection(db, "messages"), {
+  const idToken = await getIdToken();
+  await createDocument("messages", idToken, {
     from,
     to,
     content,
     read: false,
-    created_at: serverTimestamp(),
+    created_at: new Date(),
   });
 }
 
 export async function checkMessages() {
   const username = getUsername();
   if (!username) throw new Error("Parrot username not set. Run /parrot to set up.");
-  const q = query(
-    collection(db, "messages"),
-    where("to", "==", username),
-    where("read", "==", false)
+  const idToken = await getIdToken();
+
+  const docs = await runQuery("messages", idToken, [
+    { field: "to", op: "EQUAL", value: username },
+    { field: "read", op: "EQUAL", value: false },
+  ]);
+
+  // Mark read in parallel, but don't block returning content if some fail.
+  await Promise.all(
+    docs.map((d) => patchDocument(`messages/${d.id}`, idToken, { read: true }).catch(() => {}))
   );
-  const snapshot = await getDocs(q);
 
-  const messages = [];
-  const batch = writeBatch(db);
-
-  snapshot.forEach((docSnap) => {
-    const data = docSnap.data();
-    messages.push({
-      from: data.from,
-      content: data.content,
-      created_at: data.created_at?.toDate?.() ?? null,
-    });
-    batch.update(doc(db, "messages", docSnap.id), { read: true });
-  });
-
-  if (messages.length > 0) await batch.commit();
-
+  const messages = docs.map((d) => ({
+    from: d.data.from,
+    content: d.data.content,
+    created_at: d.data.created_at instanceof Date ? d.data.created_at : null,
+  }));
   messages.sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
   return messages;
 }
+
+export { getUsername };
