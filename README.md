@@ -59,7 +59,9 @@ And add a SessionStart hook to `~/.claude/settings.json`:
 
 ## First-time setup
 
-Run `/parrot` in any Claude Code session. The skill will ask for your username and write it to `~/.config/parrot/config.json`. That's the only config you need — Firebase credentials are bundled.
+Sign up at **https://parrot-web-five.vercel.app/** with email/password or Google, then claim a username. Click **Generate plugin token** to get a one-time pairing string.
+
+In Claude Code, run `/parrot` and paste the pairing string when prompted. The plugin saves your refresh token to `~/.config/parrot/config.json` (mode 0600) and you're ready to send messages.
 
 ## Usage
 
@@ -72,27 +74,40 @@ Claude calls the `send_message` tool, which writes to Firestore.
 - **Automatic:** when you start a new Claude Code session, the SessionStart hook pulls any unread messages and injects them as context. Claude will naturally surface them.
 - **Manual:** ask "any Parrot messages?" — Claude calls the `check_messages` tool.
 
-## What's in v1
+## What's in v2
 
-- Shared Firebase Firestore backend (same for all users)
-- Two MCP tools: `send_message`, `check_messages`
-- SessionStart hook that auto-pulls unread messages
-- `/parrot` skill + slash command for setup
+- **Web sign-up at https://parrot-web-five.vercel.app/** with email/password or Google
+- **Locked-down Firestore rules**: auth-required, sender-bound `from`, recipient-only read
+- **Username binding**: usernames are claimed on the website, bound to the user's Firebase UID, immutable in v2
+- **Pairing-string flow**: copy a one-time string from the website, paste into `/parrot` to authenticate the local plugin
+- Three MCP tools: `send_message`, `check_messages`, `pair`
+- SessionStart hook auto-pulls unread messages
+- Plugin uses Firebase REST APIs only (no `firebase` npm dependency at runtime)
 
-## What's not in v1
+## What's not in v2
 
-- Accounts / auth — username is just a string; anyone claiming a username can read their mail
-- Web or mobile UI
-- System notifications
-- Scheduled polling
+- **Payments / paid tier** — architecture supports it (one rule line + a Stripe webhook), but not wired
+- Username changes — usernames are permanent in v2
 - Group messages, attachments, threading/replies
+- A web inbox view (would be quick to add — uses the same Firestore reads)
 
 ## Architecture
 
 ```
-your Claude → send_message MCP tool → Firestore messages collection
+            parrot-web (Next.js on Vercel)
+        ┌──────────────────────────────────┐
+        │  /login → /setup → pairing string │
+        └──────────────────┬────────────────┘
+                           │
+                  user pastes into Claude
+                           │
+your Claude → pair tool → exchange custom token via Firebase REST
+                           │
+                  refresh token saved at ~/.config/parrot/config.json (0600)
+                           │
+your Claude → send_message → Firestore REST (auth-required rules)
                                                 ↓
-                                      (Firestore security rules: open for v1)
+                              (sender-bound, recipient-only read)
                                                 ↓
 their Claude → SessionStart hook → check-inbox.js → injected context
 ```
@@ -108,9 +123,15 @@ hooks/hooks.json              # SessionStart hook
 skills/parrot/SKILL.md        # onboarding skill
 commands/parrot.md            # /parrot slash command
 mcp/                          # MCP server (Node.js)
-  index.js
-  firebase.js                 # Firebase config bundled here
+  index.js                    # MCP server entrypoint (send_message, check_messages, pair)
+  firebase.js                 # orchestrator: pair, sendMessage, checkMessages
+  config.js                   # local config read/write (mode 0600)
+  auth-rest.js                # Firebase Identity Toolkit REST client
+  firestore-rest.js           # Firestore REST client
   package.json
+tests/                        # Firestore rules unit tests (emulator)
+  rules.test.js
+  helpers.js
 hook/check-inbox.js           # SessionStart hook script
 assets/parrot.png             # logo
 
