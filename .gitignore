@@ -1,4 +1,14 @@
 node_modules/
 .env
+.env.*
 .DS_Store
 *.log
+
+# Secrets — defense in depth. None of these should ever live in the repo.
+*.pem
+*.key
+*.p12
+serviceAccount*.json
+*-admin-key.json
+*-service-account*.json
+firebase-adminsdk-*.json
