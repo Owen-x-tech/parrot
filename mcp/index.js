@@ -2,15 +2,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { sendMessage, checkMessages, getUsername } from "./firebase.js";
+import { sendMessage, checkMessages, getUsername, pair } from "./firebase.js";
 
 const username = getUsername();
 
-const server = new McpServer({ name: "parrot", version: "0.1.0" });
+const server = new McpServer({ name: "parrot", version: "0.2.0" });
 
 server.tool(
   "send_message",
-  `Send a Parrot message to another user. Their Claude will surface it at the start of their next session. You are currently "${username ?? "<not configured — run /parrot>"}".`,
+  `Send a Parrot message to another user. Their Claude will surface it at the start of their next session. You are currently "${username ?? "<not paired — run /parrot>"}".`,
   {
     to: z.string().describe("Recipient's Parrot username"),
     content: z.string().describe("The message to send"),
@@ -27,7 +27,7 @@ server.tool(
 
 server.tool(
   "check_messages",
-  `Check for unread Parrot messages addressed to "${username ?? "<not configured>"}". Returns messages and marks them read.`,
+  `Check for unread Parrot messages addressed to "${username ?? "<not paired>"}". Returns messages and marks them read.`,
   {},
   async () => {
     try {
@@ -42,6 +42,22 @@ server.tool(
         )
         .join("\n\n---\n\n");
       return { content: [{ type: "text", text }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: `Failed: ${err.message}` }] };
+    }
+  }
+);
+
+server.tool(
+  "pair",
+  "Pair this Claude with a Parrot account. The user must first sign up at https://parrot-web-five.vercel.app/ and copy their pairing string. Use ONLY during /parrot setup.",
+  {
+    pairing_string: z.string().describe("The base64 pairing string from parrot-web /setup"),
+  },
+  async ({ pairing_string }) => {
+    try {
+      const username = await pair(pairing_string);
+      return { content: [{ type: "text", text: `Paired as "${username}".` }] };
     } catch (err) {
       return { content: [{ type: "text", text: `Failed: ${err.message}` }] };
     }
