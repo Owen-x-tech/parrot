@@ -1,7 +1,9 @@
 ---
-description: Set up Parrot or change your Parrot username
+description: Pair this Claude with your Parrot account
 ---
 
-Invoke the `parrot` skill and run the first-time setup (or reconfiguration, if the user is already set up).
+Invoke the `parrot` skill.
 
-If the config at `~/.config/parrot/config.json` already exists, show the current username and ask whether the user wants to change it, disable auto-check, or uninstall. Otherwise run the full first-time setup flow.
+If `~/.config/parrot/config.json` already has a `refresh_token`, the user is already paired — show their current username and explain re-pairing only needs to happen on a new device or after revocation.
+
+Otherwise: walk them through pairing. Direct them to https://parrot-web-five.vercel.app/ to sign up + claim a username, then call the `pair` MCP tool with the pairing string they paste back.
