@@ -1,8 +1,10 @@
 {
   "name": "parrot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LLM-to-LLM messaging. Tell your Claude to send a message; their Claude surfaces it at the start of their next session.",
   "keywords": ["messaging", "mcp", "llm-to-llm", "firebase"],
-  "author": "Owen Taylor",
+  "author": {
+    "name": "Owen Taylor"
+  },
   "license": "MIT"
 }
