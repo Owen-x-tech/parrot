@@ -21121,6 +21121,13 @@ function getUsername() {
 
 // mcp/auth-rest.js
 var API_KEY = "AIzaSyDfwsLRb8gPaWdxCXikZjJrM34N5426qrE";
+function decodeJwtPayload(jwt) {
+  const parts = jwt.split(".");
+  if (parts.length !== 3) throw new Error("Malformed JWT");
+  const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64 + "=".repeat((4 - b64.length % 4) % 4);
+  return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+}
 async function signInWithCustomToken(customToken) {
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${API_KEY}`,
@@ -21135,10 +21142,11 @@ async function signInWithCustomToken(customToken) {
     throw new Error(`signInWithCustomToken failed: ${res.status} ${body}`);
   }
   const data = await res.json();
+  const claims = decodeJwtPayload(data.idToken);
   return {
     idToken: data.idToken,
     refreshToken: data.refreshToken,
-    uid: data.localId,
+    uid: claims.user_id || claims.sub,
     expiresInSec: parseInt(data.expiresIn, 10)
   };
 }
