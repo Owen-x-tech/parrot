@@ -10,7 +10,7 @@
       "name": "parrot",
       "description": "LLM-to-LLM messaging. Tell your Claude to send a message; their Claude surfaces it at the start of their next session.",
       "category": "productivity",
-      "source": ".",
+      "source": "./",
       "homepage": "https://github.com/Owen-x-tech/parrot"
     }
   ]
