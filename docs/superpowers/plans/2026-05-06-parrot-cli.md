@@ -1289,25 +1289,35 @@ function installClaude() {
   writeJson(claudeJson, cc);
   success(`MCP server registered in ${dim("~/.claude.json")}`);
 
-  // 2. Add SessionStart hook
+  // 2. Add hooks. SessionStart catches messages on cold start. UserPromptSubmit
+  // catches messages mid-session — every time the user submits a prompt, we
+  // run `parrot check --hook-mode` and inject any unread messages as context.
+  // Together they cover every realistic delivery moment without needing to
+  // restart Claude Code.
   const settings = readJson(claudeSettings, {});
   settings.hooks ||= {};
-  settings.hooks.SessionStart ||= [];
 
-  // Remove any existing parrot hooks (idempotent)
-  for (const matcher of settings.hooks.SessionStart) {
-    matcher.hooks = (matcher.hooks ?? []).filter((h) => !(h.command || "").includes("parrot"));
+  // Helper: clear any existing parrot hooks under a given event, then add a fresh one.
+  function setParrotHook(eventName, matcherPattern) {
+    settings.hooks[eventName] ||= [];
+    for (const matcher of settings.hooks[eventName]) {
+      matcher.hooks = (matcher.hooks ?? []).filter((h) => !(h.command || "").includes("parrot"));
+    }
+    let m = settings.hooks[eventName].find((x) => x.matcher === matcherPattern);
+    if (!m) {
+      m = { matcher: matcherPattern, hooks: [] };
+      settings.hooks[eventName].push(m);
+    }
+    m.hooks.push({ type: "command", command: "parrot check --hook-mode", timeout: 10 });
+    // Drop empty matchers
+    settings.hooks[eventName] = settings.hooks[eventName].filter((x) => (x.hooks ?? []).length > 0);
   }
 
-  // Add fresh hook
-  let startupMatcher = settings.hooks.SessionStart.find((m) => m.matcher === "startup|resume");
-  if (!startupMatcher) {
-    startupMatcher = { matcher: "startup|resume", hooks: [] };
-    settings.hooks.SessionStart.push(startupMatcher);
-  }
-  startupMatcher.hooks.push({ type: "command", command: "parrot check --hook-mode", timeout: 10 });
+  setParrotHook("SessionStart", "startup|resume");
+  setParrotHook("UserPromptSubmit", "*");
+
   writeJson(claudeSettings, settings);
-  success(`SessionStart hook installed in ${dim("~/.claude/settings.json")}`);
+  success(`SessionStart + UserPromptSubmit hooks installed in ${dim("~/.claude/settings.json")}`);
 
   info("\nQuit Claude Code (Cmd+Q) and reopen for changes to take effect.");
 }
@@ -1993,3 +2003,4 @@ That's it.
 - Group messages, attachments, threading
 - Stripe-based paid tier
 - Web-based device pairing flow (the gold-standard "show short code in CLI, enter on website" flow)
+- **Real-time push delivery** — current plan delivers messages at every turn boundary via UserPromptSubmit (great for "messages just appear without me asking"). True real-time would require a long-poll/SSE/Firestore-listener daemon that can interrupt Claude mid-tool-call. Possible future direction: a `parrot daemon` background process that listens via Firestore real-time SDK and uses something like macOS notifications + autoresume to wake Claude Code automatically when a high-priority message arrives. Significant engineering, mostly UX nuance (don't interrupt during long tasks, batch messages, permission prompts). Worth considering as v5+ once usage patterns are known.
