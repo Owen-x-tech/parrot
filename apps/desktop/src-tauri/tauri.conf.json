@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Parrot",
+  "version": "0.3.13",
+  "identifier": "chat.parrot.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Parrot",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 680,
+        "minHeight": 520,
+        "center": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay"
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "createUpdaterArtifacts": true,
+    "macOS": { "minimumSystemVersion": "12.0" },
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns"]
+  },
+  "plugins": {
+    "deep-link": { "desktop": { "schemes": ["parrot"] } },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJGQUQ0MjU1RkY5REQzMkMKUldRczA1My9WVUt0TDNpRy9FSVdTdVpKRTVrTGJkSnFFbm5ZSktwRFM4YmQ0NGpQZGk5STdqTTUK",
+      "endpoints": ["https://parrot-web-five.vercel.app/updates/latest.json"]
+    }
+  }
+}

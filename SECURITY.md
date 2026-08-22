@@ -12,20 +12,20 @@ deployed users.
 ## Scope
 
 In scope:
-- The Parrot Claude Code plugin in this repo (MCP server, hooks, skills)
+- Parrot Desktop, its loopback MCP runtime, agent config manager, hooks, and skills
+- The legacy Parrot Claude Code plugin during the desktop beta
 - The Firestore security rules in `firestore.rules`
 - The shared Firebase backend (project `parrot-ai-9b46e`) as accessed via the
   documented client flows
 
 Out of scope:
 - Vulnerabilities in upstream dependencies (please report to those projects)
-- Issues that require a compromised end-user machine (e.g., reading
-  `~/.config/parrot/config.json` after gaining shell access)
+- Issues that require a fully compromised end-user machine
 - Social-engineering attacks against Parrot users
 
 ## What's intentionally public
 
-The Firebase **Web API key** (`AIzaSy…`) and project ID appear in client code.
+The Firebase web API key and project ID appear in client code.
 This is by design — see Google's [Learn about using and managing API keys for
 Firebase](https://firebase.google.com/docs/projects/api-keys). Security is
 enforced by Firestore rules and Firebase Auth, not by hiding the key.
@@ -37,6 +37,10 @@ The following are gitignored and have never been committed:
 - `.env` files
 - Private keys (`*.pem`, `*.key`, `*.p12`)
 - Any third-party API tokens
+
+Desktop device-session tokens are stored only in macOS Keychain. Browser auth
+codes are hashed at rest, expire after five minutes, and are single-use. Agent
+configuration contains only a loopback URL and never a reusable credential.
 
 If you find anything in the repo that looks like a real secret, please report
 it via the channel above.

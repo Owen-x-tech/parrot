@@ -1,56 +1,118 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
 
-    // Username claims — first-come-first-served, immutable, only the claiming
-    // user can write their own UID into the doc.
+    function profile() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid));
+    }
+
+    function isContact(ownerUid) {
+      return signedIn()
+        && profile().data.contactUids is list
+        && profile().data.contactUids.hasAny([ownerUid]);
+    }
+
+    function canReadConversation(conversationId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUids.hasAny([request.auth.uid]);
+    }
+
+    // V3 documents are mutated only by trusted Firebase Functions/Admin SDK.
+    match /profiles/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isContact(uid));
+      allow write: if false;
+    }
+
+    match /identities/{identityId} {
+      allow read: if signedIn()
+        && (resource.data.ownerUid == request.auth.uid
+          || (resource.data.visibleToContacts == true && isContact(resource.data.ownerUid)));
+      allow write: if false;
+    }
+
+    match /contacts/{contactId} {
+      allow read: if signedIn() && resource.data.memberUids.hasAny([request.auth.uid]);
+      allow write: if false;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if signedIn() && resource.data.ownerUids.hasAny([request.auth.uid]);
+      allow write: if false;
+
+      match /messages/{messageId} {
+        allow read: if canReadConversation(conversationId);
+        allow write: if false;
+      }
+
+      match /memberStates/{identityId} {
+        allow read: if canReadConversation(conversationId);
+        allow write: if false;
+      }
+    }
+
+    match /agentInstallations/{installationId} {
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /invites/{inviteId} {
+      allow read, write: if false;
+    }
+
+    match /desktopAuthCodes/{codeId} {
+      allow read, write: if false;
+    }
+
+    match /deviceSessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    // Legacy v2 pairing remains available during the desktop beta. Its narrow
+    // sender/recipient rules stay in place until the explicit production cutover.
     match /usernames/{username} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-                    && request.resource.data.keys().hasOnly(['uid'])
-                    && request.resource.data.uid == request.auth.uid;
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
       allow update, delete: if false;
     }
 
-    // Reverse mapping uid → username. Owned by the user. Created only when the
-    // matching usernames/{name} doc already points to this UID.
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.data.keys().hasOnly(['username'])
-                    && exists(/databases/$(database)/documents/usernames/$(request.resource.data.username))
-                    && get(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == request.auth.uid;
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['username'])
+        && exists(/databases/$(database)/documents/usernames/$(request.resource.data.username))
+        && get(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == request.auth.uid;
       allow update, delete: if false;
     }
 
-    // Messages — sender-bound `from`, recipient-only read, read-flag-only edit,
-    // immutable content, no delete.
     match /messages/{messageId} {
       function senderUsername() {
         return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username;
       }
+
       function recipientExists(name) {
         return exists(/databases/$(database)/documents/usernames/$(name));
       }
 
-      allow create: if request.auth != null
-                    && request.resource.data.keys().hasOnly(['from', 'to', 'content', 'read', 'created_at'])
-                    && request.resource.data.from is string
-                    && request.resource.data.to is string
-                    && request.resource.data.content is string
-                    && request.resource.data.read == false
-                    && request.resource.data.from == senderUsername()
-                    && recipientExists(request.resource.data.to);
-
-      allow read: if request.auth != null
-                  && resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username;
-
-      allow update: if request.auth != null
-                    && resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
-                    && request.resource.data.read == true;
-
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['from', 'to', 'content', 'read', 'created_at'])
+        && request.resource.data.from is string
+        && request.resource.data.to is string
+        && request.resource.data.content is string
+        && request.resource.data.read == false
+        && request.resource.data.from == senderUsername()
+        && recipientExists(request.resource.data.to);
+      allow read: if signedIn()
+        && resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username;
+      allow update: if signedIn()
+        && resource.data.to == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        && request.resource.data.read == true;
       allow delete: if false;
     }
   }

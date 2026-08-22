@@ -1,0 +1,43 @@
+[package]
+name = "parrot-desktop"
+version = "0.3.13"
+description = "Parrot desktop messaging and local agent runtime"
+authors = ["Parrot"]
+edition = "2021"
+
+[lib]
+name = "parrot_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+anyhow = "1.0.102"
+axum = "0.8.8"
+base64 = "0.22.1"
+chrono = { version = "0.4.44", features = ["serde"] }
+directories = "6.0.0"
+keyring = { version = "3.6.3", features = ["apple-native"] }
+rand = "0.10.0"
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.9"
+tauri = { version = "2.11.5", features = ["tray-icon"] }
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-deep-link = "2.4.7"
+tauri-plugin-http = "2.5.9"
+tauri-plugin-notification = "2.3.3"
+tauri-plugin-opener = "2.5.2"
+tauri-plugin-process = "2.3.1"
+tauri-plugin-single-instance = { version = "2.4.0", features = ["deep-link"] }
+tauri-plugin-updater = "2.10.1"
+tokio = { version = "1.50.0", features = ["full"] }
+toml_edit = "0.25.4"
+url = "2.5.8"
+uuid = { version = "1.22.0", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

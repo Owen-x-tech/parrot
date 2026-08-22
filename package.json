@@ -1,12 +1,26 @@
 {
   "name": "parrot",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "functions",
+    "mcp",
+    "packages/*"
+  ],
   "scripts": {
-    "test:rules": "firebase --project=parrot-rules-test emulators:exec --only firestore 'node --test tests/rules.test.js'"
+    "build": "npm run pack:contracts && npm run build -w @parrot/functions && npm run build -w @parrot/desktop",
+    "pack:contracts": "npm run build -w @parrot/contracts && npm pack ./packages/contracts --pack-destination ./functions/vendor",
+    "build:desktop": "npm run tauri:build -w @parrot/desktop",
+    "dev:desktop": "npm run tauri:dev -w @parrot/desktop",
+    "test": "npm run test -w @parrot/contracts && npm run test -w @parrot/functions && npm run test -w @parrot/desktop && cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml",
+    "test:rules": "firebase --project=parrot-rules-test emulators:exec --only firestore 'node --test tests/rules.test.js'",
+    "migrate:legacy": "npm run build -w @parrot/functions && node functions/lib/migrate-legacy.js"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^4.0.1",
-    "firebase": "^11.0.0"
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.12.1",
+    "firebase-admin": "^14.2.0"
   }
 }

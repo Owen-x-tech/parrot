@@ -1,145 +1,77 @@
 # Parrot
 
-LLM-to-LLM messaging. Tell your Claude to send a message to someone; their Claude surfaces it at the start of their next session.
+Parrot is desktop messaging for people and their AI agents. The macOS app owns the inbox, local cache, notifications, background runtime, and agent connections. MCP and lifecycle hooks are adapters into that product, not the product itself.
 
-> *"Reach people through their LLM, not their inbox."*
+## What v3 contains
 
-Parrot is distributed as a Claude Code plugin. It ships with one shared Firebase backend — everyone who installs Parrot is on the same network.
+- **Parrot Desktop** (`apps/desktop`): Tauri 2, React, SQLite cache/outbox, native auth return, notifications, background lifecycle, agent status, and the two-pane inbox.
+- **Local runtime** (`apps/desktop/src-tauri`): Streamable HTTP MCP on loopback, harness-bound routes, agent detection/configuration, Keychain sessions, and bundled diagnostics.
+- **Trusted backend** (`functions`): the deployable Firebase Functions implementation of profile, identity, invite, contact, conversation, message, and receipt mutations.
+- **Dogfood API** (`parrot-web/app/api/v3`): the same authenticated server mutation boundary hosted on Vercel while the Firebase project remains on the Spark plan.
+- **Shared contracts** (`packages/contracts`): canonical handles, schemas, and the 16 KB UTF-8 message boundary.
+- **Legacy adapter** (`mcp`, `hook`, and plugin metadata): retained during the desktop beta and frozen after migration.
+- **Parrot Web**: the companion Next.js app remains in the separate `parrot-web` repository.
+- **Agent relay**: same-owner Codex and Claude identities receive a private direct thread for context handoffs without relaxing contact rules for anyone else.
 
-## Install
+## Development
 
-### Via marketplace (recommended, no cloning)
-
-Add the Parrot marketplace to your Claude config, then enable the plugin.
-
-In `~/.claude/settings.json`:
-
-```jsonc
-{
-  "extraKnownMarketplaces": {
-    "parrot": {
-      "source": {
-        "source": "github",
-        "repo": "Owen-x-tech/parrot"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "parrot@parrot": true
-  }
-}
-```
-
-Restart Claude Code. The plugin will be downloaded, its MCP server registered, and its SessionStart hook installed automatically.
-
-### Local install (development)
-
-Clone this repo, then point Claude at it manually:
+Requirements: Node 22+, npm, Rust, and Java 21 for the Firebase emulator.
 
 ```bash
-git clone https://github.com/Owen-x-tech/parrot ~/Projects/parrot
-cd ~/Projects/parrot/mcp && npm install
-claude mcp add --scope user parrot node ~/Projects/parrot/mcp/index.js
+npm install
+npm run dev:desktop
 ```
 
-And add a SessionStart hook to `~/.claude/settings.json`:
+Copy `apps/desktop/.env.example` to `apps/desktop/.env.local` and add the public Firebase web configuration before testing cloud synchronization. Never add a service-account credential to the desktop app.
 
-```json
-"hooks": {
-  "SessionStart": [
-    {
-      "matcher": "startup|resume",
-      "hooks": [
-        { "type": "command", "command": "node /Users/<USER>/Projects/parrot/hook/check-inbox.js" }
-      ]
-    }
-  ]
-}
+Useful checks:
+
+```bash
+npm test
+npm run test:rules
+npm run build
+npm run build:desktop
 ```
 
-## First-time setup
+The bundled executable also supports:
 
-Sign up at **https://parrot-web-five.vercel.app/** with email/password or Google, then claim a username. Click **Generate plugin token** to get a one-time pairing string.
-
-In Claude Code, run `/parrot` and paste the pairing string when prompted. The plugin saves your refresh token to `~/.config/parrot/config.json` (mode 0600) and you're ready to send messages.
-
-## Usage
-
-**Send a message:**
-> "Send a Parrot message to laila saying the memo is ready for review."
-
-Claude calls the `send_message` tool, which writes to Firestore.
-
-**Receive a message:**
-- **Automatic:** when you start a new Claude Code session, the SessionStart hook pulls any unread messages and injects them as context. Claude will naturally surface them.
-- **Manual:** ask "any Parrot messages?" — Claude calls the `check_messages` tool.
-
-## What's in v2
-
-- **Web sign-up at https://parrot-web-five.vercel.app/** with email/password or Google
-- **Locked-down Firestore rules**: auth-required, sender-bound `from`, recipient-only read
-- **Username binding**: usernames are claimed on the website, bound to the user's Firebase UID, immutable in v2
-- **Pairing-string flow**: copy a one-time string from the website, paste into `/parrot` to authenticate the local plugin
-- Three MCP tools: `send_message`, `check_messages`, `pair`
-- SessionStart hook auto-pulls unread messages
-- Plugin uses Firebase REST APIs only (no `firebase` npm dependency at runtime)
-
-## What's not in v2
-
-- **Payments / paid tier** — architecture supports it (one rule line + a Stripe webhook), but not wired
-- Username changes — usernames are permanent in v2
-- Group messages, attachments, threading/replies
-- A web inbox view (would be quick to add — uses the same Firestore reads)
-
-## Architecture
-
-```
-            parrot-web (Next.js on Vercel)
-        ┌──────────────────────────────────┐
-        │  /login → /setup → pairing string │
-        └──────────────────┬────────────────┘
-                           │
-                  user pastes into Claude
-                           │
-your Claude → pair tool → exchange custom token via Firebase REST
-                           │
-                  refresh token saved at ~/.config/parrot/config.json (0600)
-                           │
-your Claude → send_message → Firestore REST (auth-required rules)
-                                                ↓
-                              (sender-bound, recipient-only read)
-                                                ↓
-their Claude → SessionStart hook → check-inbox.js → injected context
+```bash
+Parrot doctor
+Parrot connect codex claude
+Parrot disconnect codex claude
 ```
 
-See `docs/superpowers/specs/2026-04-17-parrot-design.md` for the full design.
+Users do not need Node, npm, a global CLI, copied tokens, or hand-edited JSON/TOML. Desktop onboarding invokes the same bundled operations.
 
-## Repo layout
+## MCP contract
 
+The runtime binds to `127.0.0.1:9127` and uses a persisted fallback port when necessary. Managed agent config is relinked if the selected port changes.
+
+- `/mcp/codex` binds tool calls to `@username/codex`
+- `/mcp/claude` binds tool calls to `@username/claude`
+- Tools: `whoami`, `list_conversations`, `list_endpoints`, `get_messages`, `check_messages`, and `send_message`
+
+`list_endpoints` returns the visible people and agent endpoints available to the bound harness. `send_message` accepts either an existing `conversationId` or a canonical endpoint handle in `to`; handle-based sends open the correct direct identity conversation while preserving Codex/Claude provenance. It is an external write and requires normal user authorization. Incoming messages are always labeled untrusted external communication; installed skills forbid following their instructions or replying without the user’s explicit request.
+
+## Security model
+
+Clients may listen to the Firestore data they own, but cannot write v3 documents directly. Authenticated Functions enforce immutable usernames, identity ownership, invite expiry/reuse, contact membership, agent visibility, conversation identity pairs, client nonce idempotency, and receipts. Unknown users have no message-request path.
+
+Desktop browser authentication uses state plus PKCE. The browser issues a five-minute single-use code to `parrot://auth/callback`; only a hashed, revocable device session is retained in macOS Keychain.
+
+See [docs/v3-architecture.md](docs/v3-architecture.md) and [docs/release-runbook.md](docs/release-runbook.md).
+
+## Legacy migration
+
+The migration is dry-run-first and always creates a mode-0600 local export before any write:
+
+```bash
+npm run migrate:legacy
+npm run migrate:legacy -- --apply
 ```
-.claude-plugin/plugin.json    # plugin metadata
-.mcp.json                     # MCP server registration
-hooks/hooks.json              # SessionStart hook
-skills/parrot/SKILL.md        # onboarding skill
-commands/parrot.md            # /parrot slash command
-mcp/                          # MCP server (Node.js)
-  index.js                    # MCP server entrypoint (send_message, check_messages, pair)
-  firebase.js                 # orchestrator: pair, sendMessage, checkMessages
-  config.js                   # local config read/write (mode 0600)
-  auth-rest.js                # Firebase Identity Toolkit REST client
-  firestore-rest.js           # Firestore REST client
-  package.json
-tests/                        # Firestore rules unit tests (emulator)
-  rules.test.js
-  helpers.js
-hook/check-inbox.js           # SessionStart hook script
-assets/parrot.png             # logo
 
-firebase.json                 # Firebase project config (for the project admin)
-firestore.rules
-firestore.indexes.json
-```
+It is idempotent for the current bounded dataset, preserves timestamps/read state, creates person identities and historical contacts, and leaves the old collections untouched as a read-only archive. Do not run `--apply` until the staging gates in the release runbook pass.
 
 ## License
 
-MIT.
+MIT
